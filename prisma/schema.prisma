@@ -1,0 +1,126 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+// ==========================================
+// TITULADOS (GraduateSurvey)
+// ==========================================
+
+model GraduateSurvey {
+  id                       String   @id @default(cuid())
+  createdAt                DateTime @default(now())
+
+  // Datos generales
+  edad                     String   // "25-34 años", "35 años o más"
+  genero                   String   // "Hombre", "Mujer", "Otro"
+
+  // Formación complementaria
+  formacionComplementaria  Boolean  @default(false)
+  nivelPosgrado            String?  // "Diplomado", "Especialidad", "Maestría", "Doctorado", "Posdoctorado"
+  institucionPosgrado      String?  // Dónde cursó
+  fuenteFinanciamiento     String?  // "Recursos propios", "Beca total", "Beca parcial"
+  nombrePrograma           String?
+
+  // Interés en posgrado
+  interesPosgrado          Boolean  @default(false)
+  areaInteresPosgrado      String?  // "IA", "Robótica", "Ing. Software", "Base de Datos", "Redes"
+  organizacionPosgrado     String?
+
+  // Likert sobre FCyT (1-4)
+  opinionPosgradoFCyT      Int?
+
+  // Vida profesional
+  aniosVidaProfesional     Int
+  aniosDesempleo           Int      @default(0)
+
+  // Situación laboral actual
+  situacionLaboral         String   // "Trabajando en organización", "No trabajo", "Emprendimiento propio"
+
+  // Emprendimiento (opcional)
+  origenEmprendimiento     String?
+  entregableNegocio        String?
+  financiamientoNegocio    String?
+  satisfaccionNegocio      Int?
+  importanciaFormacion     Int?
+
+  // Empleabilidad
+  primerEmpleo             Boolean  @default(false)
+  tiempoPrimerEmpleo       String?
+  numeroEmpleos            String?
+
+  // Satisfacción con la carrera (Likert 1-4)
+  satisfaccionCarrera      Int?
+  concordanciaMercado      Int?
+
+  // Aspectos (múltiple) — guardamos como string separado por ";"
+  aspectosUtiles           String?
+  aspectosMejorar          String?
+  asignaturasUtiles        String?
+  asignaturasInutiles      String?
+
+  // Contacto
+  redContactos             Boolean  @default(false)
+  email                    String?
+  telefono                 String?
+  linkedin                 String?
+  competencias       CompetenciaTitulado[]
+}
+
+// ==========================================
+// EMPLEADORES (EmployerSurvey)
+// ==========================================
+
+model EmployerSurvey {
+  id                       String   @id @default(cuid())
+  createdAt                DateTime @default(now())
+
+  // Datos de la organización
+  email                    String?
+  nombreEmpresa            String
+  tipoOrganizacion         String   // "Público", "Privado"
+  tamano                   String   // "Grande", "Mediana", "Pequeña", "Micro"
+  rubroSector              String
+
+  // Empleabilidad
+  haContratado5Anios       Boolean  @default(false)
+  proyeccionContratacion   String
+  nivelFormacionDemanda    String
+  medioConvocatoria        String?
+  cargosDesempenados       String?  // múltiple, separado por ";"
+
+  // Preguntas abiertas
+  areasEmergentes          String?
+  herramientasTecnologicas String?
+  habilidadesRequeridas    String?
+
+  // Likert de percepción (1-4)
+  likertConfianza          Int?
+  likertTituloConsistente  Int?
+  likertConsultaOpinion    Int?
+  likertConocePerfil       Int?
+  likertPerfilCoherente    Int?
+  likertDesempenoDestacado Int?
+  likertConsideraOpinion   Int?
+  likertCompetencias       Int?
+  likertValores            Int?
+  likertParticipacion      Int?
+}
+model CompetenciaTitulado {
+  id                 String   @id @default(cuid())
+  createdAt          DateTime @default(now())
+  tituladoId         String
+  nombreCompetencia  String
+  tipo               String   // "Técnica" o "Transversal"
+  nivelAdquirido     Int      // 1-5
+  nivelRequerido     Int      // 1-5
+  brecha             Int      // requerido - adquirido
+
+  titulado           GraduateSurvey @relation(fields: [tituladoId], references: [id], onDelete: Cascade)
+
+  @@index([tituladoId])
+}
