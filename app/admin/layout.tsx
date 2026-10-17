@@ -5,6 +5,44 @@ import Link from "next/link";
 
 export const instant = false;
 
+const MENU_ITEMS = [
+  {
+    href: "/admin",
+    label: "Dashboard",
+    icono: "📊",
+  },
+  {
+    href: "/admin/hu1",
+    label: "Brechas de Competencias",
+    icono: "🎯",
+  },
+  {
+    href: "/admin/hu2",
+    label: "Inserción Laboral",
+    icono: "💼",
+  },
+  {
+    href: "/admin/hu3",
+    label: "Formación Continua",
+    icono: "🎓",
+  },
+  {
+    href: "/admin/hu4",
+    label: "Pertinencia Curricular",
+    icono: "📚",
+  },
+  {
+    href: "/admin/hu5",
+    label: "Calidad Institucional",
+    icono: "🌟",
+  },
+  {
+    href: "/admin/hu6",
+    label: "Reportes y Exportación",
+    icono: "📄",
+  },
+];
+
 export default async function AdminLayout({
   children,
 }: {
@@ -24,73 +62,49 @@ export default async function AdminLayout({
 
   return (
     <div className="min-h-screen flex bg-slate-50">
-      {/* Menú lateral */}
-      <aside className="w-64 bg-blue-900 text-white flex-shrink-0">
-        <div className="p-6 border-b border-blue-800">
-          <h1 className="text-lg font-bold leading-tight">
-            Panel de Análisis
-          </h1>
-          <p className="text-xs text-blue-300 mt-1">Ing. Sistemas — UMSS</p>
+      {/* MENÚ LATERAL REDISEÑADO */}
+      <aside className="w-72 bg-blue-900 text-white flex flex-col justify-between p-6 shrink-0 shadow-lg">
+        <div>
+          {/* CABECERA */}
+          <div className="mb-8 border-b border-blue-800/80 pb-5">
+            <h1 className="text-2xl font-extrabold tracking-tight text-white">
+              Panel de Análisis
+            </h1>
+            <p className="text-sm font-medium text-blue-200 mt-1">
+              Ing. Sistemas — UMSS
+            </p>
+          </div>
+
+          {/* NAVEGACIÓN PRINCIPAL */}
+          <nav className="space-y-2">
+            {MENU_ITEMS.map((item) => (
+              <Link
+                key={item.href}
+                href={item.href}
+                className="flex items-center gap-3.5 px-4 py-3 rounded-xl text-sm font-semibold text-blue-100 hover:bg-blue-800 hover:text-white transition-all duration-150"
+              >
+                <span className="text-lg">{item.icono}</span>
+                <span className="leading-snug">{item.label}</span>
+              </Link>
+            ))}
+          </nav>
         </div>
 
-        <nav className="p-4 space-y-1">
-          <Link
-            href="/admin"
-            className="block px-3 py-2 rounded-md text-sm hover:bg-blue-800"
-          >
-           Dashboard
-          </Link>
-          <Link
-            href="/admin/hu1"
-            className="block px-3 py-2 rounded-md text-sm hover:bg-blue-800"
-          >
-            Antiguedad y empleabilidad
-          </Link>
-          <Link
-            href="/admin/hu2"
-            className="block px-3 py-2 rounded-md text-sm hover:bg-blue-800"
-          >
-            Formación continua
-          </Link>
-          <Link
-            href="/admin/hu3"
-            className="block px-3 py-2 rounded-md text-sm hover:bg-blue-800"
-          >
-            Financiamiento
-          </Link>
-          <Link
-            href="/admin/hu4"
-            className="block px-3 py-2 rounded-md text-sm hover:bg-blue-800"
-          >
-            Competencias
-          </Link>
-          <Link
-            href="/admin/hu5"
-            className="block px-3 py-2 rounded-md text-sm hover:bg-blue-800"
-          >
-            Reportes
-          </Link>
-          <Link
-            href="/admin/importar"
-            className="block px-3 py-2 rounded-md text-sm hover:bg-blue-800"
-          >
-            Importar
-          </Link>
-
-          <div className="pt-4 mt-4 border-t border-blue-800">
-            <form action="/api/logout" method="POST">
-              <button
-                type="submit"
-                className="w-full text-left px-3 py-2 rounded-md text-sm hover:bg-red-700"
-              >
-                🚪 Cerrar sesión
-              </button>
-            </form>
-          </div>
-        </nav>
+        {/* CERRAR SESIÓN (MANTENIENDO FORMULARIO POST /api/logout) */}
+        <div className="pt-6 border-t border-blue-800/80">
+          <form action="/api/logout" method="POST">
+            <button
+              type="submit"
+              className="w-full flex items-center gap-3 px-4 py-3 text-sm font-bold text-rose-200 hover:text-white hover:bg-rose-900/50 rounded-xl transition-all duration-150 text-left"
+            >
+              <span className="text-lg">🚪</span>
+              <span>Cerrar sesión</span>
+            </button>
+          </form>
+        </div>
       </aside>
 
-      {/* Contenido */}
+      {/* CONTENIDO PRINCIPAL */}
       <main className="flex-1 p-8 overflow-auto">{children}</main>
     </div>
   );

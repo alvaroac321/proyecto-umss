@@ -1,100 +1,77 @@
 import { NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
-import { media, desviacionEstandar } from "@/lib/analisis/estadisticas";
+
+// Función auxiliar para contar frecuencias de ítems separados por punto y coma (;)
+function contarFrecuenciasTexto(
+  registros: any[],
+  campo: string,
+): Record<string, number> {
+  const conteo: Record<string, number> = {};
+
+  for (const r of registros) {
+    const valor = r[campo];
+    if (!valor || typeof valor !== "string") continue;
+
+    const items = valor
+      .split(";")
+      .map((i) => i.trim())
+      .filter((i) => i.length > 0);
+
+    for (const item of items) {
+      conteo[item] = (conteo[item] || 0) + 1;
+    }
+  }
+
+  return conteo;
+}
 
 export async function GET() {
   try {
-    const competencias = await prisma.competenciaTitulado.findMany();
+    const titulados =
+      (await (prisma as any).graduateSurvey?.findMany()) ||
+      (await (prisma as any).titulado?.findMany()) ||
+      [];
 
-    if (competencias.length === 0) {
+    const totalTitulados = titulados.length;
+
+    if (totalTitulados === 0) {
       return NextResponse.json({
         ok: true,
-        totalRegistros: 0,
-        competencias: [],
-        resumen: {
-          brechaPromedio: 0,
-          competenciaMayorBrecha: null,
-          competenciaMenorBrecha: null,
-        },
+        totalTitulados: 0,
+        asignaturasUtiles: {},
+        asignaturasInutiles: {},
+        aspectosUtiles: {},
+        aspectosMejorar: {},
       });
     }
 
-    // Agrupar por nombre de competencia
-    const agrupadas: Record<
-      string,
-      {
-        tipo: string;
-        adquirido: number[];
-        requerido: number[];
-        brecha: number[];
-      }
-    > = {};
-
-    for (const c of competencias) {
-      if (!agrupadas[c.nombreCompetencia]) {
-        agrupadas[c.nombreCompetencia] = {
-          tipo: c.tipo,
-          adquirido: [],
-          requerido: [],
-          brecha: [],
-        };
-      }
-      agrupadas[c.nombreCompetencia].adquirido.push(c.nivelAdquirido);
-      agrupadas[c.nombreCompetencia].requerido.push(c.nivelRequerido);
-      agrupadas[c.nombreCompetencia].brecha.push(c.brecha);
-    }
-
-    // Calcular medias y desviaciones por competencia
-    const resultado = Object.entries(agrupadas).map(([nombre, datos]) => ({
-      nombre,
-      tipo: datos.tipo,
-      mediaAdquirido: Number(media(datos.adquirido).toFixed(2)),
-      mediaRequerido: Number(media(datos.requerido).toFixed(2)),
-      desviacionAdquirido: Number(
-        desviacionEstandar(datos.adquirido).toFixed(2),
-      ),
-      desviacionRequerido: Number(
-        desviacionEstandar(datos.requerido).toFixed(2),
-      ),
-      brechaPromedio: Number(media(datos.brecha).toFixed(2)),
-      muestras: datos.adquirido.length,
-    }));
-
-    // Ordenar por brecha descendente
-    resultado.sort((a, b) => b.brechaPromedio - a.brechaPromedio);
-
-    // Resumen
-    const brechaPromedio =
-      resultado.reduce((acc, c) => acc + c.brechaPromedio, 0) /
-      resultado.length;
-
-    const mayorBrecha = resultado[0];
-    const menorBrecha = resultado[resultado.length - 1];
+    // Procesar conteos de texto estructurado y respuestas múltiples
+    const asignaturasUtiles = contarFrecuenciasTexto(
+      titulados,
+      "asignaturasUtiles",
+    );
+    const asignaturasInutiles = contarFrecuenciasTexto(
+      titulados,
+      "asignaturasInutiles",
+    );
+    const aspectosUtiles = contarFrecuenciasTexto(titulados, "aspectosUtiles");
+    const aspectosMejorar = contarFrecuenciasTexto(
+      titulados,
+      "aspectosMejorar",
+    );
 
     return NextResponse.json({
       ok: true,
-      totalRegistros: competencias.length,
-      competencias: resultado,
-      resumen: {
-        brechaPromedio: Number(brechaPromedio.toFixed(2)),
-        competenciaMayorBrecha: mayorBrecha
-          ? {
-              nombre: mayorBrecha.nombre,
-              brecha: mayorBrecha.brechaPromedio,
-            }
-          : null,
-        competenciaMenorBrecha: menorBrecha
-          ? {
-              nombre: menorBrecha.nombre,
-              brecha: menorBrecha.brechaPromedio,
-            }
-          : null,
-      },
+      totalTitulados,
+      asignaturasUtiles,
+      asignaturasInutiles,
+      aspectosUtiles,
+      aspectosMejorar,
     });
   } catch (error) {
-    console.error("Error en HU4:", error);
+    console.error("Error en API HU4:", error);
     return NextResponse.json(
-      { ok: false, error: "Error al calcular estadísticas" },
+      { ok: false, error: "Error al evaluar la pertinencia curricular" },
       { status: 500 },
     );
   }

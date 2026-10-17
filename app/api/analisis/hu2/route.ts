@@ -1,89 +1,94 @@
 import { NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
-import {
-  frecuencias,
-  frecuenciasRelativas,
-} from "@/lib/analisis/estadisticas";
 
 export async function GET() {
   try {
-    const titulados = await prisma.graduateSurvey.findMany();
+    const titulados =
+      (await (prisma as any).graduateSurvey?.findMany()) ||
+      (await (prisma as any).titulado?.findMany()) ||
+      [];
 
-    // Nivel de posgrado alcanzado (solo quienes tienen formación complementaria)
-    const conFormacion = titulados.filter((t) => t.formacionComplementaria);
-    const nivelesPosgrado = conFormacion
-      .map((t) => t.nivelPosgrado)
-      .filter((n): n is string => !!n);
+    const empleadores =
+      (await (prisma as any).employerSurvey?.findMany()) ||
+      (await (prisma as any).empleador?.findMany()) ||
+      [];
 
-    // Áreas de interés (solo quienes están interesados)
-    const interesados = titulados.filter((t) => t.interesPosgrado);
-    const areasInteres = interesados
-      .map((t) => t.areaInteresPosgrado)
-      .filter((a): a is string => !!a);
+    const totalTitulados = titulados.length;
+    const totalEmpleadores = empleadores.length;
 
-    // Frecuencias de nivel de posgrado
-    const freqNivel = frecuencias(nivelesPosgrado);
-    const freqNivelRel = frecuenciasRelativas(nivelesPosgrado);
+    if (totalTitulados === 0 && totalEmpleadores === 0) {
+      return NextResponse.json({
+        ok: true,
+        totalTitulados: 0,
+        totalEmpleadores: 0,
+        tiempoPrimerEmpleo: {},
+        situacionLaboral: {},
+        contratacionPorRubro: {},
+        tamanoEmpresas: {},
+        proyeccionContratacion: {},
+        haContratado5Anios: { si: 0, no: 0 },
+      });
+    }
 
-    // Frecuencias de áreas de interés
-    const freqAreas = frecuencias(areasInteres);
-    const freqAreasRel = frecuenciasRelativas(areasInteres);
+    // 1. Analizar tiempo para conseguir el primer empleo (Titulados)
+    const tiempoPrimerEmpleo: Record<string, number> = {};
+    const situacionLaboral: Record<string, number> = {};
 
-    // Detección de concentración crítica (> 70%)
-    const areasConcentradas = Object.entries(freqAreasRel)
-      .filter(([_, porcentaje]) => porcentaje > 70)
-      .map(([area, porcentaje]) => ({
-        area,
-        porcentaje: Number(porcentaje.toFixed(2)),
-      }));
+    for (const t of titulados) {
+      const tiempo = t.tiempoPrimerEmpleo || "No especificado";
+      tiempoPrimerEmpleo[tiempo] = (tiempoPrimerEmpleo[tiempo] || 0) + 1;
 
-    // Top 2 áreas combinadas
-    const areasOrdenadas = Object.entries(freqAreasRel)
-      .sort((a, b) => b[1] - a[1])
-      .slice(0, 2);
-    const concentracionTop2 = areasOrdenadas.reduce(
-      (acc, [_, p]) => acc + p,
-      0,
-    );
+      const situacion = t.situacionLaboral || "Sin registro";
+      situacionLaboral[situacion] = (situacionLaboral[situacion] || 0) + 1;
+    }
+
+    // 2. Analizar perfil de contratantes (Empleadores)
+    const contratacionPorRubro: Record<string, number> = {};
+    const tamanoEmpresas: Record<string, number> = {};
+    const proyeccionContratacion: Record<string, number> = {};
+    let haContratadoSi = 0;
+    let haContratadoNo = 0;
+
+    for (const e of empleadores) {
+      const rubro = e.rubroSector || "Otros";
+      contratacionPorRubro[rubro] = (contratacionPorRubro[rubro] || 0) + 1;
+
+      const tamano = e.tamano || "No especificado";
+      tamanoEmpresas[tamano] = (tamanoEmpresas[tamano] || 0) + 1;
+
+      const proyeccion = e.proyeccionContratacion || "Sin proyeccion";
+      proyeccionContratacion[proyeccion] =
+        (proyeccionContratacion[proyeccion] || 0) + 1;
+
+      if (
+        e.haContratado5Anios === true ||
+        String(e.haContratado5Anios).toLowerCase() === "sí" ||
+        String(e.haContratado5Anios) === "true"
+      ) {
+        haContratadoSi++;
+      } else {
+        haContratadoNo++;
+      }
+    }
 
     return NextResponse.json({
       ok: true,
-      totales: {
-        totalTitulados: titulados.length,
-        conFormacionComplementaria: conFormacion.length,
-        interesadosEnPosgrado: interesados.length,
-      },
-      nivelPosgrado: {
-        absolutas: freqNivel,
-        relativas: Object.fromEntries(
-          Object.entries(freqNivelRel).map(([k, v]) => [
-            k,
-            Number(v.toFixed(2)),
-          ]),
-        ),
-      },
-      areasInteres: {
-        absolutas: freqAreas,
-        relativas: Object.fromEntries(
-          Object.entries(freqAreasRel).map(([k, v]) => [
-            k,
-            Number(v.toFixed(2)),
-          ]),
-        ),
-      },
-      alertas: {
-        areasConcentradas,
-        concentracionTop2: Number(concentracionTop2.toFixed(2)),
-        top2: areasOrdenadas.map(([area, p]) => ({
-          area,
-          porcentaje: Number(p.toFixed(2)),
-        })),
+      totalTitulados,
+      totalEmpleadores,
+      tiempoPrimerEmpleo,
+      situacionLaboral,
+      contratacionPorRubro,
+      tamanoEmpresas,
+      proyeccionContratacion,
+      haContratado5Anios: {
+        si: haContratadoSi,
+        no: haContratadoNo,
       },
     });
   } catch (error) {
-    console.error("Error en HU2:", error);
+    console.error("Error en API HU2:", error);
     return NextResponse.json(
-      { ok: false, error: "Error al calcular estadísticas" },
+      { ok: false, error: "Error al calcular el mapa de inserción laboral" },
       { status: 500 },
     );
   }

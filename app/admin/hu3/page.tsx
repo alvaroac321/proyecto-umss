@@ -1,43 +1,21 @@
 "use client";
 
 import { useEffect, useState } from "react";
-import {
-  BarChart,
-  Bar,
-  XAxis,
-  YAxis,
-  Tooltip,
-  CartesianGrid,
-  ResponsiveContainer,
-  Legend,
-} from "recharts";
-
-interface TablaContingencia {
-  filas: string[];
-  columnas: string[];
-  matriz: number[][];
-  totalesFila: number[];
-  totalesColumna: number[];
-  total: number;
-}
 
 interface DatosHU3 {
-  totales: {
-    totalTitulados: number;
-    conFinanciamiento: number;
+  ok: boolean;
+  totalTitulados: number;
+  totalEmpleadores: number;
+  nivelPosgradoMap: Record<string, number>;
+  fuenteFinanciamientoMap: Record<string, number>;
+  tablaContingencia: Record<string, Record<string, number>>;
+  nivelFormacionDemandaMap: Record<string, number>;
+  areasEmergentesList: string[];
+  estadisticaChi: {
+    chiCuadrada: number;
+    gradosLibertad: number;
+    esSignificativo: boolean;
   };
-  financiamiento: {
-    absolutas: Record<string, number>;
-    relativas: Record<string, number>;
-  };
-  tabla: TablaContingencia | null;
-  chiCuadrado: {
-    chi2: number;
-    gl: number;
-    pValor: number;
-    significativo: boolean;
-    conclusion: string;
-  } | null;
 }
 
 export default function HU3Page() {
@@ -50,260 +28,219 @@ export default function HU3Page() {
       .then((data) => {
         if (data.ok) setDatos(data);
       })
+      .catch((err) => console.error(err))
       .finally(() => setCargando(false));
   }, []);
 
   if (cargando) {
-    return <p className="text-slate-600">Cargando datos...</p>;
+    return (
+      <div className="flex items-center gap-3 text-slate-600 py-10">
+        <div className="w-5 h-5 border-2 border-amber-600 border-t-transparent rounded-full animate-spin"></div>
+        <p>Cargando análisis de Formación Continua (HU-03)...</p>
+      </div>
+    );
   }
 
-  if (!datos || datos.totales.conFinanciamiento === 0) {
+  if (!datos || (datos.totalTitulados === 0 && datos.totalEmpleadores === 0)) {
     return (
       <div>
         <h1 className="text-3xl font-bold text-blue-900 mb-2">
-          HU3: Mecanismos de financiamiento
+          HU-03: Demanda de Formación Continua y Capacidad de Financiamiento
         </h1>
-        <div className="mt-8 rounded-xl bg-amber-50 p-6 border border-amber-200 text-amber-800">
-          No hay datos suficientes. Llena el formulario de titulados con
-          información de financiamiento y posgrado.
+        <p className="text-slate-600 mb-8">
+          Evaluación de necesidades de posgrado y capacidad económica de
+          financiamiento.
+        </p>
+        <div className="rounded-xl bg-amber-50 p-6 border border-amber-200 text-amber-800">
+          ⚠️ No hay datos registrados sobre posgrados en las encuestas.
         </div>
       </div>
     );
   }
 
-  // Preparar datos para gráfico de barras apiladas
-  const dataGrafico =
-    datos.tabla?.filas.map((fila, i) => {
-      const obj: any = { nombre: fila };
-      datos.tabla!.columnas.forEach((col, j) => {
-        obj[col] = datos.tabla!.matriz[i][j];
-      });
-      return obj;
-    }) || [];
-
-  const colores = ["#3b82f6", "#10b981", "#f59e0b", "#ef4444", "#8b5cf6"];
+  // Extraer las fuentes de financiamiento únicas para la tabla cruzada
+  const fuentesUnicas = Array.from(
+    new Set(
+      Object.values(datos.tablaContingencia).flatMap((item) =>
+        Object.keys(item),
+      ),
+    ),
+  );
 
   return (
-    <div>
-      <h1 className="text-3xl font-bold text-blue-900 mb-2">
-        HU3: Mecanismos de financiamiento
-      </h1>
-      <p className="text-slate-600 mb-8">
-        Cruce de fuente de financiamiento con el nivel de posgrado deseado y
-        prueba Chi-cuadrado.
-      </p>
-
-      {/* Resumen */}
-      <div className="grid grid-cols-1 md:grid-cols-2 gap-6 mb-8">
-        <div className="bg-white rounded-xl p-6 shadow-sm border border-slate-200">
-          <p className="text-sm text-slate-500 uppercase">
-            Titulados con financiamiento registrado
-          </p>
-          <p className="text-3xl font-bold text-blue-900">
-            {datos.totales.conFinanciamiento}
-          </p>
-          <p className="text-xs text-slate-500 mt-1">
-            de {datos.totales.totalTitulados} totales
-          </p>
-        </div>
-        <div className="bg-white rounded-xl p-6 shadow-sm border border-slate-200">
-          <p className="text-sm text-slate-500 uppercase">
-            Fuente más frecuente
-          </p>
-          {Object.entries(datos.financiamiento.absolutas)
-            .sort((a, b) => b[1] - a[1])
-            .slice(0, 1)
-            .map(([fuente, cantidad]) => (
-              <div key={fuente}>
-                <p className="text-2xl font-bold text-emerald-600">{fuente}</p>
-                <p className="text-xs text-slate-500 mt-1">
-                  {cantidad} titulados (
-                  {datos.financiamiento.relativas[fuente]}%)
-                </p>
-              </div>
-            ))}
-        </div>
+    <div className="space-y-8">
+      {/* CABECERA */}
+      <div>
+        <span className="text-xs font-bold text-amber-700 bg-amber-100 px-3 py-1 rounded-full uppercase tracking-wider">
+          Historia de Usuario 03
+        </span>
+        <h1 className="text-3xl font-bold text-blue-900 mt-2 mb-1">
+          Demanda de Formación Continua y Capacidad de Financiamiento
+        </h1>
+        <p className="text-slate-600">
+          Viabilidad financiera y áreas estratégicas para programas de posgrado
+          con validación estadística ($\chi^2$).
+        </p>
       </div>
 
-      {/* Frecuencias de financiamiento */}
-      <div className="bg-white rounded-xl p-6 shadow-sm border border-slate-200 mb-8">
-        <h2 className="text-lg font-bold text-blue-900 mb-4">
-          Frecuencia de fuentes de financiamiento
-        </h2>
-        <table className="w-full text-sm">
-          <thead>
-            <tr className="border-b">
-              <th className="text-left py-2 text-slate-600">Fuente</th>
-              <th className="text-right py-2 text-slate-600">Frecuencia</th>
-              <th className="text-right py-2 text-slate-600">Porcentaje</th>
-            </tr>
-          </thead>
-          <tbody>
-            {Object.entries(datos.financiamiento.absolutas).map(
-              ([fuente, cantidad]) => (
-                <tr key={fuente} className="border-b last:border-0">
-                  <td className="py-2 text-slate-800">{fuente}</td>
-                  <td className="text-right text-slate-700">{cantidad}</td>
-                  <td className="text-right font-semibold text-slate-800">
-                    {datos.financiamiento.relativas[fuente]}%
-                  </td>
-                </tr>
-              ),
-            )}
-          </tbody>
-        </table>
-      </div>
-
-      {/* Tabla de contingencia */}
-      {datos.tabla && (
-        <div className="bg-white rounded-xl p-6 shadow-sm border border-slate-200 mb-8">
-          <h2 className="text-lg font-bold text-blue-900 mb-4">
-            Tabla de contingencia: Financiamiento × Nivel de posgrado
-          </h2>
-          <div className="overflow-x-auto">
-            <table className="w-full text-sm border-collapse">
-              <thead>
-                <tr className="bg-slate-100">
-                  <th className="text-left py-2 px-3 border">
-                    Financiamiento
-                  </th>
-                  {datos.tabla.columnas.map((col) => (
-                    <th
-                      key={col}
-                      className="text-center py-2 px-3 border text-slate-600"
-                    >
-                      {col}
-                    </th>
-                  ))}
-                  <th className="text-center py-2 px-3 border bg-blue-50">
-                    Total
-                  </th>
-                </tr>
-              </thead>
-              <tbody>
-                {datos.tabla.filas.map((fila, i) => (
-                  <tr key={fila}>
-                    <td className="py-2 px-3 border font-medium text-slate-800">
-                      {fila}
-                    </td>
-                    {datos.tabla!.columnas.map((_, j) => (
-                      <td
-                        key={j}
-                        className="text-center py-2 px-3 border text-slate-700"
-                      >
-                        {datos.tabla!.matriz[i][j]}
-                      </td>
-                    ))}
-                    <td className="text-center py-2 px-3 border font-bold bg-blue-50">
-                      {datos.tabla!.totalesFila[i]}
-                    </td>
-                  </tr>
-                ))}
-                <tr className="bg-slate-50 font-bold">
-                  <td className="py-2 px-3 border">Total</td>
-                  {datos.tabla.totalesColumna.map((t, j) => (
-                    <td
-                      key={j}
-                      className="text-center py-2 px-3 border"
-                    >
-                      {t}
-                    </td>
-                  ))}
-                  <td className="text-center py-2 px-3 border bg-blue-100">
-                    {datos.tabla.total}
-                  </td>
-                </tr>
-              </tbody>
-            </table>
-          </div>
+      {/* RESULTADO PRUEBA ESTADISTICA CHI-CUADRADA */}
+      <div className="bg-white rounded-xl p-6 shadow-sm border border-slate-200 grid grid-cols-1 md:grid-cols-3 gap-6">
+        <div>
+          <p className="text-xs font-semibold text-slate-500 uppercase tracking-wider mb-1">
+            Estadístico Chi-Cuadrada ($\chi^2$)
+          </p>
+          <p className="text-3xl font-bold text-amber-600">
+            {datos.estadisticaChi.chiCuadrada}
+          </p>
+          <p className="text-xs text-slate-400 mt-1">
+            Grados de libertad (df): {datos.estadisticaChi.gradosLibertad}
+          </p>
         </div>
-      )}
 
-      {/* Gráfico de barras apiladas */}
-      {dataGrafico.length > 0 && (
-        <div className="bg-white rounded-xl p-6 shadow-sm border border-slate-200 mb-8">
-          <h2 className="text-lg font-bold text-blue-900 mb-4">
-            Distribución cruzada: Financiamiento por nivel de posgrado
-          </h2>
-          <div className="h-80">
-            <ResponsiveContainer width="100%" height="100%">
-              <BarChart data={dataGrafico}>
-                <CartesianGrid strokeDasharray="3 3" />
-                <XAxis dataKey="nombre" />
-                <YAxis />
-                <Tooltip />
-                <Legend />
-                {datos.tabla!.columnas.map((col, i) => (
-                  <Bar
-                    key={col}
-                    dataKey={col}
-                    stackId="a"
-                    fill={colores[i % colores.length]}
-                  />
-                ))}
-              </BarChart>
-            </ResponsiveContainer>
-          </div>
-        </div>
-      )}
-
-      {/* Prueba Chi-cuadrado */}
-      {datos.chiCuadrado && (
-        <div
-          className={`rounded-xl p-6 border-2 ${
-            datos.chiCuadrado.significativo
-              ? "bg-emerald-50 border-emerald-300"
-              : "bg-slate-50 border-slate-300"
-          }`}
-        >
-          <h2 className="text-lg font-bold text-blue-900 mb-4">
-            Prueba de independencia Chi-cuadrado (χ²)
-          </h2>
-
-          <div className="grid grid-cols-1 md:grid-cols-3 gap-6 mb-4">
-            <div>
-              <p className="text-sm text-slate-500 uppercase">
-                Estadístico χ²
-              </p>
-              <p className="text-2xl font-bold text-blue-900">
-                {datos.chiCuadrado.chi2}
-              </p>
-            </div>
-            <div>
-              <p className="text-sm text-slate-500 uppercase">
-                Grados de libertad
-              </p>
-              <p className="text-2xl font-bold text-slate-700">
-                {datos.chiCuadrado.gl}
-              </p>
-            </div>
-            <div>
-              <p className="text-sm text-slate-500 uppercase">p-valor</p>
-              <p
-                className={`text-2xl font-bold ${
-                  datos.chiCuadrado.significativo
-                    ? "text-emerald-600"
-                    : "text-slate-600"
-                }`}
-              >
-                {datos.chiCuadrado.pValor}
-              </p>
-            </div>
-          </div>
-
-          <div
-            className={`p-4 rounded-md ${
-              datos.chiCuadrado.significativo
-                ? "bg-emerald-100"
-                : "bg-slate-200"
+        <div>
+          <p className="text-xs font-semibold text-slate-500 uppercase tracking-wider mb-1">
+            Independencia Estadística
+          </p>
+          <p
+            className={`text-xl font-bold mt-1 ${
+              datos.estadisticaChi.esSignificativo
+                ? "text-emerald-600"
+                : "text-blue-900"
             }`}
           >
-            <p className="text-sm font-medium text-slate-800">
-              <strong>Conclusión:</strong> {datos.chiCuadrado.conclusion}
-            </p>
+            {datos.estadisticaChi.esSignificativo
+              ? "Relación Significativa (p < 0.05)"
+              : "Distribución Homogénea"}
+          </p>
+          <p className="text-xs text-slate-500 mt-1">
+            Evaluación entre área de interés y fuente de pago
+          </p>
+        </div>
+
+        <div className="bg-amber-50/50 p-4 rounded-lg border border-amber-100">
+          <p className="text-xs font-bold text-amber-900 uppercase tracking-wider mb-1">
+            💡 Decisión Directiva
+          </p>
+          <p className="text-xs text-amber-800 leading-relaxed">
+            Permite a la Dirección de Posgrado FCyT ajustar precios y becas en
+            función del método de pago de los interesados.
+          </p>
+        </div>
+      </div>
+
+      <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+        {/* NIVELES DE POSGRADO INTERESADOS */}
+        <div className="bg-white rounded-xl p-6 shadow-sm border border-slate-200">
+          <h2 className="text-lg font-bold text-blue-900 mb-4">
+            🎓 Niveles de Posgrado Demandados (Titulados)
+          </h2>
+          <div className="space-y-3">
+            {Object.entries(datos.nivelPosgradoMap).map(([nivel, cantidad]) => {
+              const porcentaje = Math.round(
+                (cantidad / datos.totalTitulados) * 100,
+              );
+              return (
+                <div key={nivel}>
+                  <div className="flex justify-between text-xs font-medium text-slate-700 mb-1">
+                    <span>{nivel}</span>
+                    <span>
+                      {cantidad} ({porcentaje}%)
+                    </span>
+                  </div>
+                  <div className="bg-slate-100 h-3 rounded-full overflow-hidden">
+                    <div
+                      className="bg-amber-500 h-full rounded-full"
+                      style={{ width: `${porcentaje}%` }}
+                    />
+                  </div>
+                </div>
+              );
+            })}
           </div>
         </div>
-      )}
+
+        {/* FUENTES DE FINANCIAMIENTO */}
+        <div className="bg-white rounded-xl p-6 shadow-sm border border-slate-200">
+          <h2 className="text-lg font-bold text-blue-900 mb-4">
+            💳 Fuentes de Financiamiento Estimadas
+          </h2>
+          <div className="space-y-3">
+            {Object.entries(datos.fuenteFinanciamientoMap).map(
+              ([fuente, cantidad]) => {
+                const porcentaje = Math.round(
+                  (cantidad / datos.totalTitulados) * 100,
+                );
+                return (
+                  <div key={fuente}>
+                    <div className="flex justify-between text-xs font-medium text-slate-700 mb-1">
+                      <span>{fuente}</span>
+                      <span>
+                        {cantidad} ({porcentaje}%)
+                      </span>
+                    </div>
+                    <div className="bg-slate-100 h-3 rounded-full overflow-hidden">
+                      <div
+                        className="bg-blue-600 h-full rounded-full"
+                        style={{ width: `${porcentaje}%` }}
+                      />
+                    </div>
+                  </div>
+                );
+              },
+            )}
+          </div>
+        </div>
+      </div>
+
+      {/* TABLA DE CONTINGENCIA CRUZADA */}
+      <div className="bg-white rounded-xl p-6 shadow-sm border border-slate-200">
+        <h2 className="text-lg font-bold text-blue-900 mb-4">
+          📊 Tabla de Contingencia: Área de Interés vs. Fuente de Financiamiento
+        </h2>
+
+        <div className="overflow-x-auto">
+          <table className="w-full text-left text-xs border-collapse">
+            <thead>
+              <tr className="bg-slate-50 border-b border-slate-200 text-slate-700">
+                <th className="p-3 font-bold">Área de Interés</th>
+                {fuentesUnicas.map((f) => (
+                  <th key={f} className="p-3 font-bold text-center">
+                    {f}
+                  </th>
+                ))}
+              </tr>
+            </thead>
+            <tbody className="divide-y divide-slate-100 text-slate-600">
+              {Object.entries(datos.tablaContingencia).map(([area, fila]) => (
+                <tr key={area} className="hover:bg-slate-50/50">
+                  <td className="p-3 font-medium text-slate-800">{area}</td>
+                  {fuentesUnicas.map((f) => (
+                    <td
+                      key={f}
+                      className="p-3 text-center font-bold text-slate-700"
+                    >
+                      {fila[f] || 0}
+                    </td>
+                  ))}
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+      </div>
+
+      {/* VALOR PARA ARCUSUR */}
+      <div className="bg-amber-50 rounded-xl p-6 border border-amber-200 text-amber-900">
+        <h3 className="font-bold text-sm mb-2">
+          📌 Valor para Acreditación ARCUSUR
+        </h3>
+        <p className="text-xs text-amber-800 leading-relaxed">
+          Sustenta la creación de nuevos programas de posgrado (Maestrías y
+          Diplomados) en la Dirección de Posgrado FCyT orientados a áreas
+          estratégicas (IA, Ciberseguridad, Ciencia de Datos) con respaldo
+          financiero de la cohorte.
+        </p>
+      </div>
     </div>
   );
 }

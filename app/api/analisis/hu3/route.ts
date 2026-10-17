@@ -1,94 +1,138 @@
 import { NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
-import {
-  tablaContingencia,
-  chiCuadrado,
-  frecuencias,
-  frecuenciasRelativas,
-} from "@/lib/analisis/estadisticas";
+
+// Función auxiliar para calcular la prueba Chi-Cuadrada (Chi-Square Test)
+function calcularChiCuadrada(
+  observados: Record<string, Record<string, number>>,
+) {
+  const filas = Object.keys(observados);
+  if (filas.length === 0)
+    return { chiCuadrada: 0, gradosLibertad: 0, esSignificativo: false };
+
+  // Obtener todas las columnas únicas
+  const columnasSet = new Set<string>();
+  filas.forEach((f) => {
+    Object.keys(observados[f]).forEach((c) => columnasSet.add(c));
+  });
+  const columnas = Array.from(columnasSet);
+
+  if (columnas.length === 0)
+    return { chiCuadrada: 0, gradosLibertad: 0, esSignificativo: false };
+
+  // Totales por fila y columna
+  const totalesFila: Record<string, number> = {};
+  const totalesColumna: Record<string, number> = {};
+  let grandTotal = 0;
+
+  filas.forEach((f) => {
+    totalesFila[f] = 0;
+    columnas.forEach((c) => {
+      const val = observados[f][c] || 0;
+      totalesFila[f] += val;
+      totalesColumna[c] = (totalesColumna[c] || 0) + val;
+      grandTotal += val;
+    });
+  });
+
+  if (grandTotal === 0)
+    return { chiCuadrada: 0, gradosLibertad: 0, esSignificativo: false };
+
+  // Calcular estadístico Chi-Cuadrada
+  let chiCuadrada = 0;
+  filas.forEach((f) => {
+    columnas.forEach((c) => {
+      const obs = observados[f][c] || 0;
+      const esperada = (totalesFila[f] * totalesColumna[c]) / grandTotal;
+      if (esperada > 0) {
+        chiCuadrada += Math.pow(obs - esperada, 2) / esperada;
+      }
+    });
+  });
+
+  const gradosLibertad = (filas.length - 1) * (columnas.length - 1);
+  // Criterio de significancia aproximado para alpha = 0.05
+  const esSignificativo = chiCuadrada > 3.841;
+
+  return {
+    chiCuadrada: Number(chiCuadrada.toFixed(2)),
+    gradosLibertad: Math.max(0, gradosLibertad),
+    esSignificativo,
+  };
+}
 
 export async function GET() {
   try {
-    const titulados = await prisma.graduateSurvey.findMany();
+    const titulados =
+      (await (prisma as any).graduateSurvey?.findMany()) ||
+      (await (prisma as any).titulado?.findMany()) ||
+      [];
 
-    // Filtrar los que tienen fuente de financiamiento registrada
-    const conFinanciamiento = titulados.filter(
-      (t) => t.fuenteFinanciamiento && t.nivelPosgrado,
-    );
+    const empleadores =
+      (await (prisma as any).employerSurvey?.findMany()) ||
+      (await (prisma as any).empleador?.findMany()) ||
+      [];
 
-    if (conFinanciamiento.length === 0) {
-      return NextResponse.json({
-        ok: true,
-        totales: {
-          totalTitulados: titulados.length,
-          conFinanciamiento: 0,
-        },
-        financiamiento: { absolutas: {}, relativas: {} },
-        tabla: null,
-        chiCuadrado: null,
-        interpretacion: "No hay datos suficientes para el análisis.",
-      });
-    }
+    const totalTitulados = titulados.length;
+    const totalEmpleadores = empleadores.length;
 
-    // Frecuencias de fuente de financiamiento
-    const fuentes = conFinanciamiento
-      .map((t) => t.fuenteFinanciamiento)
-      .filter((f): f is string => !!f);
-    const freqFuentes = frecuencias(fuentes);
-    const freqFuentesRel = frecuenciasRelativas(fuentes);
+    // 1. Demanda de Niveles de Posgrado (Titulados)
+    const nivelPosgradoMap: Record<string, number> = {};
+    const fuenteFinanciamientoMap: Record<string, number> = {};
 
-    // Tabla de contingencia: Financiamiento × Nivel de posgrado
-    const variableA = conFinanciamiento.map((t) => t.fuenteFinanciamiento!);
-    const variableB = conFinanciamiento.map((t) => t.nivelPosgrado!);
+    // Tabla Contingencia: areaInteresPosgrado vs fuenteFinanciamiento
+    const tablaContingencia: Record<string, Record<string, number>> = {};
 
-    const tabla = tablaContingencia(variableA, variableB);
+    for (const t of titulados) {
+      const nivel = t.nivelPosgrado || "Ninguno / Sin preferencia";
+      nivelPosgradoMap[nivel] = (nivelPosgradoMap[nivel] || 0) + 1;
 
-    // Prueba Chi-cuadrado (solo si hay al menos 2 filas y 2 columnas)
-    let pruebaChi = null;
-    if (tabla.filas.length >= 2 && tabla.columnas.length >= 2) {
-      const resultado = chiCuadrado(tabla.matriz);
+      const fuente = t.fuenteFinanciamiento || "No especificado";
+      fuenteFinanciamientoMap[fuente] =
+        (fuenteFinanciamientoMap[fuente] || 0) + 1;
 
-      // Interpretación según el p-valor
-      let conclusion: string;
-      if (resultado.pValor < 0.05) {
-        conclusion =
-          "Existe dependencia significativa entre la fuente de financiamiento y el nivel de posgrado (p < 0.05).";
-      } else {
-        conclusion =
-          "No se encontró evidencia suficiente de dependencia entre la fuente de financiamiento y el nivel de posgrado (p ≥ 0.05).";
+      const area = t.areaInteresPosgrado || "Otras Áreas";
+      if (!tablaContingencia[area]) {
+        tablaContingencia[area] = {};
       }
-
-      pruebaChi = {
-        chi2: resultado.chi2,
-        gl: resultado.gl,
-        pValor: Number(resultado.pValor.toFixed(4)),
-        significativo: resultado.pValor < 0.05,
-        conclusion,
-      };
+      tablaContingencia[area][fuente] =
+        (tablaContingencia[area][fuente] || 0) + 1;
     }
+
+    // 2. Demanda del Sector Empleador
+    const nivelFormacionDemandaMap: Record<string, number> = {};
+    const areasEmergentesList: string[] = [];
+
+    for (const e of empleadores) {
+      const nivel = e.nivelFormacionDemanda || "Grado Universitario";
+      nivelFormacionDemandaMap[nivel] =
+        (nivelFormacionDemandaMap[nivel] || 0) + 1;
+
+      if (e.areasEmergentes && String(e.areasEmergentes).trim() !== "") {
+        areasEmergentesList.push(String(e.areasEmergentes).trim());
+      }
+    }
+
+    // 3. Resultado prueba Chi-Cuadrada
+    const resultadoChi = calcularChiCuadrada(tablaContingencia);
 
     return NextResponse.json({
       ok: true,
-      totales: {
-        totalTitulados: titulados.length,
-        conFinanciamiento: conFinanciamiento.length,
-      },
-      financiamiento: {
-        absolutas: freqFuentes,
-        relativas: Object.fromEntries(
-          Object.entries(freqFuentesRel).map(([k, v]) => [
-            k,
-            Number(v.toFixed(2)),
-          ]),
-        ),
-      },
-      tabla,
-      chiCuadrado: pruebaChi,
+      totalTitulados,
+      totalEmpleadores,
+      nivelPosgradoMap,
+      fuenteFinanciamientoMap,
+      tablaContingencia,
+      nivelFormacionDemandaMap,
+      areasEmergentesList: areasEmergentesList.slice(0, 5),
+      estadisticaChi: resultadoChi,
     });
   } catch (error) {
-    console.error("Error en HU3:", error);
+    console.error("Error en API HU3:", error);
     return NextResponse.json(
-      { ok: false, error: "Error al calcular estadísticas" },
+      {
+        ok: false,
+        error: "Error al procesar la demanda de formación continua",
+      },
       { status: 500 },
     );
   }
