@@ -13,6 +13,115 @@ interface DatosHU6 {
   empleadores: any[];
 }
 
+/* ------------------------------------------------------------------ */
+/*  Utilidades                                                         */
+/* ------------------------------------------------------------------ */
+
+const porcentaje = (parte: number, total: number) =>
+  total > 0 ? Math.round((parte / total) * 100) : 0;
+
+/** Cuenta registros agrupados por un campo. Valores vacíos → "Sin dato" */
+const contarPorCampo = (lista: any[], campo: string) =>
+  lista.reduce<Record<string, number>>((acc, row) => {
+    const clave = row?.[campo] ? String(row[campo]) : "Sin dato";
+    acc[clave] = (acc[clave] || 0) + 1;
+    return acc;
+  }, {});
+
+const esSi = (valor: any) => String(valor) === "true" || valor === true;
+
+/* ------------------------------------------------------------------ */
+/*  Gráfico 1: Cobertura de la muestra (barras comparativas)           */
+/* ------------------------------------------------------------------ */
+
+function CoberturaMuestra({
+  items,
+}: {
+  items: { label: string; valor: number; color: string }[];
+}) {
+  const maximo = Math.max(1, ...items.map((i) => i.valor));
+
+  return (
+    <ul className="space-y-4">
+      {items.map((item) => (
+        <li key={item.label}>
+          <div className="flex justify-between items-baseline text-xs mb-1">
+            <span className="font-medium text-slate-700">{item.label}</span>
+            <span className="font-bold text-slate-800">{item.valor}</span>
+          </div>
+          <div className="bg-slate-100 h-3 rounded-full overflow-hidden">
+            <div
+              className="h-full rounded-full transition-all duration-700"
+              style={{
+                width: `${(item.valor / maximo) * 100}%`,
+                backgroundColor: item.color,
+              }}
+              title={`${item.label}: ${item.valor}`}
+            />
+          </div>
+        </li>
+      ))}
+    </ul>
+  );
+}
+
+/* ------------------------------------------------------------------ */
+/*  Gráfico 2: Distribución por categoría (barras ordenadas)           */
+/* ------------------------------------------------------------------ */
+
+function DistribucionBarras({
+  datos,
+  total,
+  color,
+  vacio,
+}: {
+  datos: Record<string, number>;
+  total: number;
+  color: string;
+  vacio: string;
+}) {
+  const entradas = Object.entries(datos).sort((a, b) => b[1] - a[1]);
+
+  if (entradas.length === 0) {
+    return <p className="text-xs text-slate-400">{vacio}</p>;
+  }
+
+  const maximo = Math.max(1, ...entradas.map(([, v]) => v));
+
+  return (
+    <ul className="space-y-3">
+      {entradas.map(([etiqueta, cantidad]) => {
+        const pct = porcentaje(cantidad, total);
+        return (
+          <li key={etiqueta}>
+            <div className="flex justify-between items-baseline gap-2 text-xs mb-1">
+              <span className="font-medium text-slate-700">{etiqueta}</span>
+              <span className="text-slate-500 whitespace-nowrap">
+                <span className="font-bold text-slate-800">{cantidad}</span> (
+                {pct}%)
+              </span>
+            </div>
+            <div className="bg-slate-100 h-2.5 rounded-full overflow-hidden">
+              <div
+                className="h-full rounded-full transition-all duration-700"
+                style={{
+                  width: `${(cantidad / maximo) * 100}%`,
+                  backgroundColor: color,
+                }}
+                title={`${etiqueta}: ${cantidad} (${pct}%)`}
+              />
+            </div>
+          </li>
+        );
+      })}
+    </ul>
+  );
+}
+
+/* ------------------------------------------------------------------ */
+/*  Página principal                                                   */
+/* ------------------------------------------------------------------ */
+
 export default function HU6Page() {
   const [datos, setDatos] = useState<DatosHU6 | null>(null);
   const [cargando, setCargando] = useState(true);
@@ -106,6 +215,18 @@ export default function HU6Page() {
     JSON.stringify(e).toLowerCase().includes(busqueda.toLowerCase()),
   );
 
+  // Datos para los gráficos (sobre el conjunto completo, no sobre el filtro)
+  const situacionLaboralDistribucion = contarPorCampo(
+    datos.titulados,
+    "situacionLaboral",
+  );
+
+  const tamanoDistribucion = contarPorCampo(datos.empleadores, "tamano");
+
+  const empleadoresContratantes = datos.empleadores.filter((e) =>
+    esSi(e.haContratado5Anios),
+  ).length;
+
   return (
     <div className="space-y-8">
       {/* CABECERA */}
@@ -146,6 +267,15 @@ export default function HU6Page() {
           <p className="text-xs text-slate-400 mt-1">
             Registros en EmployerSurvey
           </p>
+          {datos.resumen.totalEmpleadores > 0 && (
+            <p className="text-xs text-slate-500 mt-2">
+              {porcentaje(
+                empleadoresContratantes,
+                datos.resumen.totalEmpleadores,
+              )}
+              % han contratado titulados en 5 años
+            </p>
+          )}
         </div>
 
         <div className="bg-white rounded-xl p-6 shadow-sm border border-slate-200">
@@ -158,6 +288,67 @@ export default function HU6Page() {
           <p className="text-xs text-slate-400 mt-1">
             Registros en CompetenciaTitulado
           </p>
+        </div>
+      </div>
+
+      {/* GRÁFICOS DE RESUMEN */}
+      <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
+        <div className="bg-white rounded-xl p-6 shadow-sm border border-slate-200">
+          <h2 className="text-lg font-bold text-blue-900 mb-1">
+            📈 Cobertura de la Muestra
+          </h2>
+          <p className="text-xs text-slate-500 mb-5">
+            Volumen de registros almacenados por tipo de encuesta.
+          </p>
+          <CoberturaMuestra
+            items={[
+              {
+                label: "Titulados",
+                valor: datos.resumen.totalTitulados,
+                color: "#2563eb",
+              },
+              {
+                label: "Empleadores",
+                valor: datos.resumen.totalEmpleadores,
+                color: "#10b981",
+              },
+              {
+                label: "Competencias evaluadas",
+                valor: datos.resumen.totalCompetenciasEvaluadas,
+                color: "#7c3aed",
+              },
+            ]}
+          />
+        </div>
+
+        <div className="bg-white rounded-xl p-6 shadow-sm border border-slate-200">
+          <h2 className="text-lg font-bold text-blue-900 mb-1">
+            💼 Situación Laboral (Titulados)
+          </h2>
+          <p className="text-xs text-slate-500 mb-5">
+            Distribución sobre el total de titulados registrados.
+          </p>
+          <DistribucionBarras
+            datos={situacionLaboralDistribucion}
+            total={datos.resumen.totalTitulados}
+            color="#2563eb"
+            vacio="Sin registros de titulados."
+          />
+        </div>
+
+        <div className="bg-white rounded-xl p-6 shadow-sm border border-slate-200">
+          <h2 className="text-lg font-bold text-blue-900 mb-1">
+            📊 Tamaño de Empresas (Empleadores)
+          </h2>
+          <p className="text-xs text-slate-500 mb-5">
+            Distribución sobre el total de empleadores registrados.
+          </p>
+          <DistribucionBarras
+            datos={tamanoDistribucion}
+            total={datos.resumen.totalEmpleadores}
+            color="#10b981"
+            vacio="Sin registros de empleadores."
+          />
         </div>
       </div>
 
@@ -243,8 +434,14 @@ export default function HU6Page() {
                       <td className="p-3">
                         {t.createdAt ? String(t.createdAt).slice(0, 10) : "-"}
                       </td>
-                      <td className="p-3 font-medium text-slate-800">
-                        {t.situacionLaboral || "-"}
+                      <td className="p-3">
+                        {t.situacionLaboral ? (
+                          <span className="inline-block px-2 py-0.5 rounded-full bg-blue-50 text-blue-700 border border-blue-100 font-medium">
+                            {t.situacionLaboral}
+                          </span>
+                        ) : (
+                          "-"
+                        )}
                       </td>
                       <td className="p-3">{t.tiempoPrimerEmpleo || "-"}</td>
                       <td className="p-3">{t.email || "-"}</td>
@@ -272,24 +469,32 @@ export default function HU6Page() {
               </thead>
               <tbody className="divide-y divide-slate-100 text-slate-600">
                 {empleadoresFiltrados.length > 0 ? (
-                  empleadoresFiltrados.map((e) => (
-                    <tr key={e.id} className="hover:bg-slate-50">
-                      <td className="p-3 font-mono text-[10px] text-slate-400">
-                        {e.id?.slice(0, 8)}...
-                      </td>
-                      <td className="p-3 font-medium text-slate-800">
-                        {e.nombreEmpresa || "Sin Nombre"}
-                      </td>
-                      <td className="p-3">{e.rubroSector || "-"}</td>
-                      <td className="p-3">{e.tamano || "-"}</td>
-                      <td className="p-3 font-bold text-slate-700">
-                        {String(e.haContratado5Anios) === "true" ||
-                        e.haContratado5Anios === true
-                          ? "Sí"
-                          : "No"}
-                      </td>
-                    </tr>
-                  ))
+                  empleadoresFiltrados.map((e) => {
+                    const contrato = esSi(e.haContratado5Anios);
+                    return (
+                      <tr key={e.id} className="hover:bg-slate-50">
+                        <td className="p-3 font-mono text-[10px] text-slate-400">
+                          {e.id?.slice(0, 8)}...
+                        </td>
+                        <td className="p-3 font-medium text-slate-800">
+                          {e.nombreEmpresa || "Sin Nombre"}
+                        </td>
+                        <td className="p-3">{e.rubroSector || "-"}</td>
+                        <td className="p-3">{e.tamano || "-"}</td>
+                        <td className="p-3">
+                          <span
+                            className={`inline-block px-2 py-0.5 rounded-full font-bold ${
+                              contrato
+                                ? "bg-emerald-100 text-emerald-700"
+                                : "bg-slate-100 text-slate-500"
+                            }`}
+                          >
+                            {contrato ? "Sí" : "No"}
+                          </span>
+                        </td>
+                      </tr>
+                    );
+                  })
                 ) : (
                   <tr>
                     <td colSpan={5} className="p-6 text-center text-slate-400">
